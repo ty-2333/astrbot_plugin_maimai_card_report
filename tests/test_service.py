@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import tempfile
+import types
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from .helpers import FakeEvent, make_arcade, make_machine
@@ -12,6 +15,34 @@ from astrbot_plugin_maimai_card_report.backend.models import AbnormalUser, CardR
 from astrbot_plugin_maimai_card_report.backend.service import ReportService
 from astrbot_plugin_maimai_card_report.backend.store import PluginStore
 from astrbot_plugin_maimai_card_report.utils import now_ts
+
+
+def _install_fake_astrbot() -> list[str]:
+    """注入最小的 astrbot.api.event 模块，用于测试主动发送路径。"""
+    created: list[str] = []
+    for name in ("astrbot", "astrbot.api", "astrbot.api.event"):
+        if name not in sys.modules:
+            module = types.ModuleType(name)
+            module.__path__ = []  # 标记为包，便于逐级导入
+            sys.modules[name] = module
+            created.append(name)
+
+    event = sys.modules["astrbot.api.event"]
+    if not hasattr(event, "MessageChain"):
+
+        class MessageChain:
+            def __init__(self, text: str = ""):
+                self.text = text
+
+            def message(self, text: str):
+                self.text = text
+                return self
+
+        event.MessageChain = MessageChain
+
+    sys.modules["astrbot"].api = sys.modules["astrbot.api"]
+    sys.modules["astrbot.api"].event = event
+    return created
 
 
 class TestService(unittest.TestCase):
@@ -361,6 +392,99 @@ class TestService(unittest.TestCase):
             with self.subTest(text=text):
                 out = asyncio.run(self.service.handle_event(FakeEvent(text)))
                 self.assertIsNone(out.reply)
+
+    # ---------- 开门/闭店语补发窗口 ----------
+
+    def test_notice_delay_window(self):
+        base = datetime(2026, 11, 17, 10, 0, 0)
+        self.assertEqual(ReportService._notice_delay_seconds(base, "10:00"), 0)
+        self.assertEqual(
+            ReportService._notice_delay_seconds(base.replace(minute=4, second=59), "10:00"),
+            299,
+        )
+        # 超过 5 分钟不补发
+        self.assertIsNone(
+            ReportService._notice_delay_seconds(base.replace(minute=5, second=1), "10:00")
+        )
+        # 还没到点
+        self.assertIsNone(
+            ReportService._notice_delay_seconds(base.replace(hour=9, minute=59), "10:00")
+        )
+        # 时间格式非法
+        self.assertIsNone(ReportService._notice_delay_seconds(base, "bad"))
+
+    def _notice_arcade(self):
+        self.store.upsert_arcade(make_arcade(
+            name="通知测试",
+            aliases=["tz"],
+            group_ids=["111111"],
+            open_time="10:00",
+            close_time="22:00",
+            open_message_enabled=True,
+            close_message_enabled=True,
+        ))
+        return self.store.get_arcade("a_1")
+
+    def _run_notice_at(self, arcade, hour, minute, context):
+        import astrbot_plugin_maimai_card_report.backend.service as service_module
+
+        real_datetime = service_module.datetime
+        fake_modules = _install_fake_astrbot()
+
+        class _FixedDatetime(real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return real_datetime(2026, 11, 17, hour, minute, 30, tzinfo=tz)
+
+        service_module.datetime = _FixedDatetime
+        try:
+            svc = ReportService(self.store, context)
+            asyncio.run(svc._check_arcade_notices(arcade))
+        finally:
+            service_module.datetime = real_datetime
+            for name in fake_modules:
+                sys.modules.pop(name, None)
+
+    def test_notice_catchup_sends_within_window(self):
+        arcade = self._notice_arcade()
+        self.store.state.group_sessions["111111"] = "bot:GroupMessage:111111"
+        ctx = _FakeNoticeContext()
+        self._run_notice_at(arcade, 10, 2, ctx)
+        self.assertEqual(ctx.sent, ["bot:GroupMessage:111111"])
+        self.assertEqual(self.store.state.last_open_notice.get(arcade.id), "2026-11-17")
+        messages = [x.message for x in self.store.list_logs(50)]
+        self.assertTrue(any("开门语补发" in m for m in messages), messages)
+        self.assertTrue(any("发送成功" in m for m in messages), messages)
+
+    def test_notice_not_sent_after_window(self):
+        arcade = self._notice_arcade()
+        self.store.state.group_sessions["111111"] = "bot:GroupMessage:111111"
+        ctx = _FakeNoticeContext()
+        self._run_notice_at(arcade, 10, 10, ctx)
+        self.assertEqual(ctx.sent, [])
+        self.assertNotIn(arcade.id, self.store.state.last_open_notice)
+
+    def test_notice_failure_not_marked(self):
+        arcade = self._notice_arcade()
+        self.store.state.group_sessions["111111"] = "bot:GroupMessage:111111"
+        ctx = _FakeNoticeContext(fail=True)
+        self._run_notice_at(arcade, 10, 1, ctx)
+        self.assertNotIn(arcade.id, self.store.state.last_open_notice)
+        messages = [x.message for x in self.store.list_logs(50)]
+        self.assertTrue(any("全部发送失败" in m for m in messages), messages)
+
+
+class _FakeNoticeContext:
+    """模拟 AstrBot Context：只实现 send_message，不提供 LLM。"""
+
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self.sent: list[str] = []
+
+    async def send_message(self, session, chain):
+        if self.fail:
+            raise RuntimeError("send boom")
+        self.sent.append(session)
 
 
 if __name__ == "__main__":

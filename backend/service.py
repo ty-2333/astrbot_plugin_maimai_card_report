@@ -29,6 +29,10 @@ from .parser import (
 )
 from .store import PluginStore
 
+# 开门/闭店语过点后的补发窗口（秒）。定时任务每 30 秒检查一次，
+# 5 分钟窗口足以覆盖插件重载、短暂掉线等「错过整分钟」的情况。
+NOTICE_CATCHUP_SECONDS = 300
+
 
 @dataclass
 class EventOutcome:
@@ -619,31 +623,65 @@ class ReportService:
                 )
                 self.store.add_log("error", "", f"机厅 {arcade.name} 通知检查失败：{e}")
 
+    @staticmethod
+    def _notice_delay_seconds(now_local: datetime, time_str: str | None) -> int | None:
+        """返回「当前时间 - 目标时间」的秒数；不在补发窗口内返回 None。
+
+        窗口为 ``[0, NOTICE_CATCHUP_SECONDS]``：还没到点（负数）或已超过
+        5 分钟都返回 None，避免凌晨启动时把白天的开门语补发出去。
+        """
+        if not time_str:
+            return None
+        try:
+            hour, minute = (int(part) for part in str(time_str).split(":"))
+            target = now_local.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
+        except (ValueError, TypeError):
+            return None
+        delay = int((now_local - target).total_seconds())
+        if 0 <= delay <= NOTICE_CATCHUP_SECONDS:
+            return delay
+        return None
+
     async def _check_arcade_notices(self, arcade: Arcade) -> None:
         try:
             tz = ZoneInfo(arcade.timezone or DEFAULT_TIMEZONE)
         except Exception:  # noqa: BLE001
             tz = ZoneInfo(DEFAULT_TIMEZONE)
         now_local = datetime.now(tz)
-        current_hm = now_local.strftime("%H:%M")
         today = now_local.strftime("%Y-%m-%d")
 
+        open_delay = self._notice_delay_seconds(now_local, arcade.open_time)
         if (
             arcade.open_message_enabled
-            and arcade.open_time
-            and arcade.open_time == current_hm
+            and open_delay is not None
             and self.store.state.last_open_notice.get(arcade.id) != today
         ):
+            if open_delay >= 60:
+                logger.info(
+                    f"[{PLUGIN_NAME}] {arcade.name} 开门语补发，已过点 {open_delay} 秒"
+                )
+                self.store.add_log(
+                    "info", "", f"{arcade.name} 开门语补发（已过点 {open_delay} 秒，仍在 5 分钟窗口内）"
+                )
             if await self._send_notice(arcade, "open"):
                 self.store.state.last_open_notice[arcade.id] = today
                 self.store.save_state()
 
+        close_delay = self._notice_delay_seconds(now_local, arcade.close_time)
         if (
             arcade.close_message_enabled
-            and arcade.close_time
-            and arcade.close_time == current_hm
+            and close_delay is not None
             and self.store.state.last_close_notice.get(arcade.id) != today
         ):
+            if close_delay >= 60:
+                logger.info(
+                    f"[{PLUGIN_NAME}] {arcade.name} 闭店语补发，已过点 {close_delay} 秒"
+                )
+                self.store.add_log(
+                    "info", "", f"{arcade.name} 闭店语补发（已过点 {close_delay} 秒，仍在 5 分钟窗口内）"
+                )
             if await self._send_notice(arcade, "close"):
                 self.store.state.last_close_notice[arcade.id] = today
                 self.store.save_state()
@@ -652,23 +690,29 @@ class ReportService:
         """生成并发送开门/闭店语；返回是否至少有一个群发送成功。
 
         调用方只在返回 True 时把当天标记为「已发送」，失败（无群会话、
-        context 不可用、发送异常）留待下一轮定时检查在同一分钟内重试。
+        context 不可用、发送异常）留待定时任务在 5 分钟补发窗口内重试。
+        只有确认存在可发送的群和通道后才生成文案，避免重试时反复调用大模型。
         """
         scene = "开门" if kind == "open" else "闭店"
         prompt_ref = arcade.open_prompt_ref if kind == "open" else arcade.close_prompt_ref
-        text = await self._generate_notice_text(arcade, scene, prompt_ref)
 
-        sessions = []
-        for gid in arcade.group_ids:
-            s = self.store.state.group_sessions.get(gid)
-            if s:
-                sessions.append(s)
+        bound_groups = [gid for gid in arcade.group_ids if gid]
+        sessions: list[tuple[str, str]] = []
+        missing_groups: list[str] = []
+        for gid in bound_groups:
+            session = self.store.state.group_sessions.get(gid)
+            if session:
+                sessions.append((gid, session))
+            else:
+                missing_groups.append(gid)
 
         if not sessions:
-            logger.warning(
-                f"[{PLUGIN_NAME}] {arcade.name} {scene}语已生成，但无可用群会话，未能发送"
+            detail = (
+                f"机厅绑定的群均无会话记录 groups={bound_groups or '无'}；"
+                f"需要对应群先发送过一条消息才能主动推送"
             )
-            self.store.add_log("warn", "", f"{arcade.name} {scene}语已生成，但无可用群会话，未能发送")
+            logger.warning(f"[{PLUGIN_NAME}] {arcade.name} {scene}语未发送：{detail}")
+            self.store.add_log("warn", "", f"{arcade.name} {scene}语未发送：{detail}")
             return False
 
         # context 为空时无法主动发消息（仅测试/本地回退会出现），直接记录并返回
@@ -696,21 +740,41 @@ class ReportService:
             self.store.add_log("error", "", f"{arcade.name} {scene}语发送失败：无法加载 MessageChain")
             return False
 
+        # 确认有可发送的群与通道后再生成文案，避免补发重试时反复调用大模型
+        text = await self._generate_notice_text(arcade, scene, prompt_ref)
+
         success_count = 0
-        for session in sessions:
+        for gid, session in sessions:
             try:
                 await send_message(session, MessageChain().message(text))
                 success_count += 1
+                logger.info(
+                    f"[{PLUGIN_NAME}] {arcade.name} {scene}语发送成功 group={gid} session={session}"
+                )
+                self.store.add_log("info", gid, f"{arcade.name} {scene}语发送成功 group={gid}")
             except Exception as e:  # noqa: BLE001
                 logger.error(
-                    f"[{PLUGIN_NAME}] {arcade.name} {scene}语发送失败 session={session}",
+                    f"[{PLUGIN_NAME}] {arcade.name} {scene}语发送失败 "
+                    f"group={gid} session={session}",
                     exc_info=True,
                 )
-                self.store.add_log("error", "", f"{arcade.name} {scene}语发送失败：{e}")
+                self.store.add_log(
+                    "error",
+                    gid,
+                    f"{arcade.name} {scene}语发送失败 group={gid} "
+                    f"session={session}：{type(e).__name__}: {e}",
+                )
 
         if success_count == 0:
             logger.warning(
-                f"[{PLUGIN_NAME}] {arcade.name} {scene}语全部发送失败，稍后重试"
+                f"[{PLUGIN_NAME}] {arcade.name} {scene}语全部发送失败"
+                f"（{len(sessions)} 个群），将在补发窗口内重试"
+            )
+            self.store.add_log(
+                "error",
+                "",
+                f"{arcade.name} {scene}语全部发送失败（{len(sessions)} 个群），"
+                f"将在 5 分钟窗口内重试",
             )
             return False
 
@@ -718,7 +782,15 @@ class ReportService:
             f"[{PLUGIN_NAME}] {arcade.name} 已发送{scene}语 "
             f"sessions={success_count}/{len(sessions)}"
         )
-        self.store.add_log("info", "", f"{arcade.name} 已发送{scene}语")
+        self.store.add_log(
+            "info", "", f"{arcade.name} 已发送{scene}语：成功 {success_count}/{len(sessions)} 个群"
+        )
+        if missing_groups:
+            self.store.add_log(
+                "warn",
+                "",
+                f"{arcade.name} {scene}语跳过无会话的群：{missing_groups}",
+            )
         return True
 
     async def _generate_notice_text(self, arcade: Arcade, scene: str, prompt_ref: str | None) -> str:
