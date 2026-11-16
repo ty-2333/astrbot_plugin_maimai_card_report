@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>舞萌报卡 · 控制台</title>
+    <style>
+        :root {
+            --bg: #f5f6f8;
+            --card: #ffffff;
+            --border: #e5e7eb;
+            --text: #1f2937;
+            --muted: #6b7280;
+            --accent: #4f46e5;
+            --accent-weak: #eef2ff;
+            --danger: #dc2626;
+            --warn: #d97706;
+            --ok: #16a34a;
+            --shadow: 0 1px 3px rgba(0, 0, 0, .06);
+        }
+
+        [data-theme="dark"] {
+            --bg: #0f1115;
+            --card: #1a1d24;
+            --border: #2a2e38;
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+            --accent: #6366f1;
+            --accent-weak: #23263a;
+            --danger: #f87171;
+            --warn: #fbbf24;
+            --ok: #4ade80;
+            --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0 0 16px;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin: 0 0 12px;
+        }
+
+        h3 {
+            font-size: 14px;
+            margin: 16px 0 8px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 16px;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            box-shadow: var(--shadow);
+        }
+
+        .stat .num {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .stat .lbl {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+        }
+
+        .badge.ok {
+            background: rgba(22, 163, 74, .15);
+            color: var(--ok);
+        }
+
+        .badge.warn {
+            background: rgba(217, 119, 6, .15);
+            color: var(--warn);
+        }
+
+        .badge.ignored {
+            background: rgba(220, 38, 38, .15);
+            color: var(--danger);
+        }
+
+        .badge.info {
+            background: rgba(79, 70, 229, .15);
+            color: var(--accent);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+
+        th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        button {
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        button.danger {
+            color: var(--danger);
+        }
+
+        button.small {
+            padding: 3px 10px;
+            font-size: 12px;
+        }
+
+        .machine-block {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .machine-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .machine-title {
+            font-weight: 600;
+        }
+
+        .pos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+        }
+
+        .pos {
+            background: var(--accent-weak);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .pos .count {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .error {
+            color: var(--danger);
+            background: rgba(220, 38, 38, .08);
+            border: 1px solid rgba(220, 38, 38, .25);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .empty {
+            color: var(--muted);
+            padding: 24px;
+            text-align: center;
+        }
+
+        .arcade-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .chips {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .chip {
+            display: inline-block;
+            background: var(--accent-weak);
+            color: var(--accent);
+            border-radius: 999px;
+            padding: 1px 8px;
+            font-size: 12px;
+            margin: 0 4px 4px 0;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .field {
+            flex: 1 1 200px;
+            min-width: 180px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        textarea {
+            min-height: 64px;
+            resize: vertical;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .inline-check {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .inline-check input {
+            width: auto;
+        }
+
+        code {
+            font-family: ui-monospace, "SFMono-Regular", Consolas, "Courier New", monospace;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1px 6px;
+            font-size: 12px;
+        }
+
+        .result {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 12px;
+            background: var(--bg);
+        }
+
+        .result pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tabs button {
+            border: 1px solid transparent;
+            border-bottom: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            padding: 8px 14px;
+            margin-bottom: -1px;
+            border-radius: 8px 8px 0 0;
+            font-size: 14px;
+        }
+
+        .tabs button.active {
+            color: var(--accent);
+            font-weight: 600;
+            background: var(--card);
+            border-color: var(--border);
+            border-bottom-color: var(--card);
+        }
+
+        .tabs button:hover {
+            color: var(--text);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+    </style>
+    <script src="/api/plugin/page/bridge-sdk.js"></script>
+</head>
+
+<body>
+    <h1>舞萌报卡 · 控制台</h1>
+    <nav class="tabs" id="tabs">
+        <button type="button" data-tab="dashboard" class="active">首页看板</button>
+        <button type="button" data-tab="arcades">机厅管理</button>
+        <button type="button" data-tab="settings">设置与调试</button>
+    </nav>
+    <div id="error" class="error" style="display:none"></div>
+
+    <section class="page active" data-tab="dashboard">
+        <div id="summary" class="summary"></div>
+        <div id="arcades"></div>
+
+        <div class="card">
+            <h2>黑名单 / 异常用户</h2>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+                <button class="danger" id="clearAbnormal">清空全部黑名单</button>
+            </div>
+            <div id="abnormal"></div>
+        </div>
+    </section>
+
+    <section class="page" data-tab="arcades">
+        <div class="card">
+            <h2>机厅列表</h2>
+            <div id="arcadeList"></div>
+        </div>
+
+        <div class="card">
+            <h2 id="formTitle">新增机厅</h2>
+            <input type="hidden" id="arcadeId" />
+            <div class="row">
+                <div class="field"><label>机厅名称 *</label><input id="name" placeholder="例如：天河城机厅" /></div>
+                <div class="field"><label>别名（逗号分隔）</label><input id="aliases" placeholder="例如：天河城,thc" /></div>
+                <div class="field"><label>绑定群号（逗号分隔）</label><input id="group_ids" placeholder="例如：123456789" /></div>
+            </div>
+            <div class="row" style="margin-top:12px;">
+                <div class="field"><label>卡数过期小时数 *</label><input id="expire_hours" type="number" step="0.5" min="0"
+                        value="4" /></div>
+                <div class="field"><label>清零粒度</label>
+                    <select id="expire_scope">
+                        <option value="slot">方位独立（按方位单独清零）</option>
+                        <option value="machine">机台共享（机台统一清零）</option>
+                    </select>
+                </div>
+                <div class="field"><label>正常人数最小值 *</label><input id="normal_count_min" type="number" value="0" /></div>
+                <div class="field"><label>正常人数最大值 *</label><input id="normal_count_max" type="number" value="20" />
+                </div>
+            </div>
+            <div class="row" style="margin-top:12px;">
+                <div class="field"><label>时区</label><input id="timezone" value="Asia/Shanghai" /></div>
+                <div class="field"><label>开门时间（HH:MM，空则不判定）</label><input id="open_time" placeholder="例如：09:30" /></div>
+                <div class="field"><label>闭店时间（HH:MM，空则不判定）</label><input id="close_time" placeholder="例如：22:00" />
+                </div>
+            </div>
+            <h3>开门 / 闭店语</h3>
+            <div class="row">
+                <div class="field inline-check"><input type="checkbox" id="open_message_enabled" /><label
+                        style="margin:0">启用开门语</label></div>
+                <div class="field inline-check"><input type="checkbox" id="close_message_enabled" /><label
+                        style="margin:0">启用闭店语</label></div>
+            </div>
+            <div class="row" style="margin-top:12px;">
+                <div class="field"><label>开门提示词（用于生成开门语，可留空用默认）</label><input id="open_prompt_ref"
+                        placeholder="可选：自定义开门语提示词" /></div>
+                <div class="field"><label>闭店提示词（用于生成闭店语，可留空用默认）</label><input id="close_prompt_ref"
+                        placeholder="可选：自定义闭店语提示词" /></div>
+            </div>
+            <h3>异常提示</h3>
+            <div class="field">
+                <label>异常提示模板（支持 {arcade} {value} {limit} {user} 等占位符）</label>
+                <input id="error_message_template" value="{arcade} 报卡失败：数值 {value} 超出正常范围（{limit}）。" />
+            </div>
+
+            <h3>机台配置</h3>
+            <div id="machines"></div>
+            <button type="button" onclick="addMachine()">+ 添加机台</button>
+
+            <div class="actions">
+                <button class="primary" onclick="save()">保存机厅</button>
+                <button class="primary" onclick="validate()">仅校验</button>
+                <button onclick="resetForm()">清空表单</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="page" data-tab="settings">
+        <div class="card">
+            <h2>报卡用法说明</h2>
+            <p class="muted">群内直接发送以下格式文本即可报卡 / 查询，无需指令前缀；发送「help」或「帮助」可让机器人回复同样的说明。</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>格式</th>
+                        <th>示例</th>
+                        <th>含义</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>方位 + 数字</td>
+                        <td><code>z3y5</code>、<code>左3右5</code></td>
+                        <td>默认机台左 3 右 5（覆盖）</td>
+                    </tr>
+                    <tr>
+                        <td>数字 + 方位</td>
+                        <td><code>3z5y</code></td>
+                        <td>默认机台左 3 右 5（覆盖）</td>
+                    </tr>
+                    <tr>
+                        <td>仅数量</td>
+                        <td><code>5k</code>、<code>5卡</code></td>
+                        <td>默认方位覆盖 5 人（数字必须带单位）</td>
+                    </tr>
+                    <tr>
+                        <td>累加</td>
+                        <td><code>z+1y5</code>、<code>+1k</code></td>
+                        <td>方位后 + 累加（左加 1、右 5）</td>
+                    </tr>
+                    <tr>
+                        <td>扣减</td>
+                        <td><code>z-1</code>、<code>左-2</code>、<code>-1k</code></td>
+                        <td>在当前人数上减少，最低到 0</td>
+                    </tr>
+                    <tr>
+                        <td>指定机台</td>
+                        <td><code>中二z1y2</code></td>
+                        <td>机台「中二」左 1 右 2</td>
+                    </tr>
+                    <tr>
+                        <td>指定机厅</td>
+                        <td><code>兆阳5k</code></td>
+                        <td>机厅「兆阳」默认机台 5 人</td>
+                    </tr>
+                    <tr>
+                        <td>查询</td>
+                        <td><code>zyjk</code>、<code>兆阳几卡</code>、<code>zy?k</code></td>
+                        <td>查询当前排卡人数</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="muted">注意：单独发送数字（如 <code>6</code>、<code>666</code>）不会报卡，也不会计入异常；报卡数值超出机厅设定的正常范围或无法识别时，会被判为异常报卡并计入黑名单计数。</p>
+        </div>
+
+        <div class="card">
+            <h2>消息解析测试</h2>
+            <p class="muted">输入一条群消息文本，模拟插件对它的机厅匹配、报卡 / 查询识别结果（不会写入任何数据）。</p>
+            <div class="row">
+                <div class="field"><label>来源群号（可选，用于群号绑定匹配）</label><input id="group_id" placeholder="例如：123456789" />
+                </div>
+                <div class="field" style="flex:3"><label>消息文本 *</label><input id="text"
+                        placeholder="例如：舞萌 左1 右2 或 舞萌 几卡" />
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <button class="primary" onclick="parseTest()">解析</button>
+            </div>
+            <div id="parseResult" class="result" style="display:none"></div>
+        </div>
+
+        <div class="card">
+            <h2>操作日志</h2>
+            <div
+                style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+                <span class="muted">显示最近 100 条操作日志</span>
+                <button onclick="loadLogs()">刷新</button>
+            </div>
+            <div id="logs"></div>
+        </div>
+    </section>
+
+    <script>
+        const API = window.AstrBotPluginView || window.AstrBotPluginPage;
+
+        async function get(path, params) {
+            const r = await API.apiGet(path, params || {});
+            return r && typeof r === 'object' && r.ok === false ? r : { ok: true, data: r };
+        }
+        async function post(path, body) {
+            const r = await API.apiPost(path, body || {});
+            return r && typeof r === 'object' && r.ok === false ? r : { ok: true, data: r };
+        }
+        function fmtTime(ts) {
+            if (!ts) return '-';
+            const d = new Date(ts * 1000);
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        }
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function showError(msg) {
+            const el = document.getElementById('error');
+            if (msg) { el.textContent = msg; el.style.display = 'block'; }
+            else { el.style.display = 'none'; }
+        }
+
+        /* ---------- 首页看板 ---------- */
+        async function refresh() {
+            showError(null);
+            try {
+                const r = await get('dashboard');
+                if (!r.ok) { showError(r.message || '加载失败'); return; }
+                renderSummary(r.data);
+                renderArcades(r.data.arcades);
+                await refreshAbnormal();
+            } catch (e) {
+                showError('加载看板失败：' + e.message);
+            }
+        }
+        function renderSummary(data) {
+            const arcadeCount = (data.arcades || []).length;
+            let machineCount = 0, positionCount = 0;
+            (data.arcades || []).forEach(a => (a.machines || []).forEach(m => {
+                machineCount++; positionCount += (m.positions || []).length;
+            }));
+            const stats = [
+                ['机厅', arcadeCount],
+                ['机台', machineCount],
+                ['方位', positionCount],
+                ['黑名单', data.abnormal_count || 0],
+                ['日志', data.log_count || 0],
+            ];
+            document.getElementById('summary').innerHTML = stats.map(([l, n]) =>
+                `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
+        }
+        function renderArcades(arcades) {
+            const wrap = document.getElementById('arcades');
+            if (!arcades || !arcades.length) {
+                wrap.innerHTML = '<div class="card empty">暂无机厅配置，请前往「机厅管理」页签添加。</div>';
+                return;
+            }
+            wrap.innerHTML = arcades.map(a => {
+                const chips = (a.aliases || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
+                const groups = (a.group_ids || []).map(x => `<span class="chip">群 ${esc(x)}</span>`).join('');
+                const machines = (a.machines || []).map(m => {
+                    const positions = (m.positions || []).map(p => {
+                        const nextClear = p.count > 0 ? fmtTime(p.expire_at) : '-';
+                        return `<div class="pos">
+          <div class="muted">${esc(p.label)}</div>
+          <div class="count">${p.count}</div>
+          <div class="muted">上次：${fmtTime(p.last_update_at)}</div>
+          <div class="muted">下次清零：${nextClear}</div>
+          <div style="margin-top:6px;">
+            <button class="small" onclick="editCount('${a.id}','${m.id}','${p.key}',${p.count},${a.normal_count_min},${a.normal_count_max})">修改人数</button>
+          </div>
+        </div>`;
+                    }).join('');
+                    const defTag = m.is_default ? '<span class="badge ok">默认</span>' : '';
+                    return `<div class="machine-block">
+        <div class="machine-head">
+          <div><span class="machine-title">${esc(m.name)}</span> ${defTag}</div>
+          <button class="danger small" onclick="clearMachine('${a.id}','${m.id}','${esc(m.name)}')">机台清零</button>
+        </div>
+        <div class="pos-grid">${positions || '<div class="muted">无方位</div>'}</div>
+      </div>`;
+                }).join('');
+                return `<div class="card">
+      <div class="arcade-head">
+        <div>
+          <h2>${esc(a.name)}</h2>
+          <div class="chips">${chips}${groups}</div>
+          <div class="muted" style="margin-top:6px;">过期 ${a.expire_hours}h · 范围 ${a.normal_count_min}~${a.normal_count_max} · 清零粒度 ${a.expire_scope === 'machine' ? '机台共享' : '方位独立'}</div>
+        </div>
+        <button class="danger" onclick="clearArcade('${a.id}','${esc(a.name)}')">机厅清零</button>
+      </div>
+      <div style="margin-top:12px;">${machines}</div>
+    </div>`;
+            }).join('');
+        }
+        async function refreshAbnormal() {
+            try {
+                const r = await get('abnormal');
+                if (!r.ok) { document.getElementById('abnormal').innerHTML = '<div class="empty">加载失败</div>'; return; }
+                const list = r.data || [];
+                if (!list.length) {
+                    document.getElementById('abnormal').innerHTML = '<div class="empty">暂无异常用户 / 黑名单记录</div>';
+                    return;
+                }
+                const rows = list.map(u => {
+                    const status = u.status === 'ignored'
+                        ? '<span class="badge ignored">已忽略</span>'
+                        : '<span class="badge warn">警告中</span>';
+                    return `<tr>
+        <td>${esc(u.qq)}</td>
+        <td>${esc(u.arcade_name || u.arcade_id)}</td>
+        <td>${esc(u.machine_name || '')}</td>
+        <td>${u.abnormal_count}</td>
+        <td>${status}</td>
+        <td>${fmtTime(u.first_abnormal_at)}</td>
+        <td>${fmtTime(u.last_abnormal_at)}</td>
+        <td>${u.ignored_at ? fmtTime(u.ignored_at) : '-'}</td>
+        <td>${esc(u.last_abnormal_value)}</td>
+        <td>${esc(u.last_raw_message)}</td>
+        <td>${esc(u.source_group_id)}</td>
+        <td><button class="danger small" onclick="removeAbnormal('${esc(u.arcade_id)}','${esc(u.qq)}')">解除</button></td>
+      </tr>`;
+                }).join('');
+                document.getElementById('abnormal').innerHTML =
+                    `<table><thead><tr><th>QQ</th><th>机厅</th><th>最近机台</th><th>次数</th><th>状态</th><th>首次异常</th><th>最近异常</th><th>封禁时间</th><th>最近异常值</th><th>原始消息</th><th>来源群</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+            } catch (e) {
+                document.getElementById('abnormal').innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+            }
+        }
+        async function editCount(arcadeId, machineId, posKey, cur, min, max) {
+            const input = prompt(`输入新人数（范围 ${min}~${max}），当前 ${cur}：`, cur);
+            if (input == null) return;
+            try {
+                const r = await post(`records/${arcadeId}/set`, { machine_id: machineId, position_key: posKey, count: parseInt(input, 10) });
+                if (!r.ok) { alert(r.message || '修改失败'); return; }
+                refresh();
+            } catch (e) { alert('修改失败：' + e.message); }
+        }
+        async function clearMachine(arcadeId, machineId, name) {
+            if (!confirm(`确定清零机台「${name}」全部方位卡数并清除相关黑名单？`)) return;
+            try {
+                const r = await post(`arcades/${arcadeId}/clear`, { machine_id: machineId });
+                if (!r.ok) { alert(r.message || '清零失败'); return; }
+                refresh();
+            } catch (e) { alert('清零失败：' + e.message); }
+        }
+        async function clearArcade(arcadeId, name) {
+            if (!confirm(`确定清零机厅「${name}」全部卡数、异常计数和黑名单？`)) return;
+            try {
+                const r = await post(`arcades/${arcadeId}/clear`, {});
+                if (!r.ok) { alert(r.message || '清零失败'); return; }
+                refresh();
+            } catch (e) { alert('清零失败：' + e.message); }
+        }
+        async function removeAbnormal(arcadeId, qq) {
+            if (!confirm(`确定解除 QQ ${qq} 的黑名单记录？`)) return;
+            try {
+                const r = await post('abnormal/remove', { arcade_id: arcadeId, qq });
+                if (!r.ok) { alert(r.message || '解除失败'); return; }
+                refresh();
+            } catch (e) { alert('解除失败：' + e.message); }
+        }
+
+        /* ---------- 机厅管理 ---------- */
+        function splitList(s) { return String(s || '').split(/[,，\s]+/).map(x => x.trim()).filter(Boolean); }
+        function joinList(a) { return (a || []).join(', '); }
+        function parsePositionText(t) {
+            const out = {};
+            String(t || '').split(/\n+/).forEach(line => {
+                line = line.trim(); if (!line) return;
+                const m = line.match(/^([^=:：]+)[=:：](.*)$/);
+                if (m) out[m[1].trim()] = m[2].trim(); else out[line] = line;
+            });
+            return out;
+        }
+        function posText(dict) {
+            return Object.entries(dict || {}).map(([k, v]) => v && v !== k ? `${k}=${v}` : k).join('\n');
+        }
+
+        async function loadList() {
+            showError(null);
+            try {
+                const r = await get('arcades');
+                if (!r.ok) { showError(r.message || '加载失败'); return; }
+                const list = r.data || [];
+                const el = document.getElementById('arcadeList');
+                if (!list.length) { el.innerHTML = '<div class="empty">暂无配置，请在下方新增机厅。</div>'; return; }
+                const rows = list.map(a => {
+                    const aliases = (a.aliases || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
+                    const groups = (a.group_ids || []).map(x => `<span class="chip">群 ${esc(x)}</span>`).join('');
+                    const machines = Object.values(a.machines || {}).map(m => `<span class="chip">${esc(m.name)}</span>`).join('');
+                    return `<tr>
+        <td>${esc(a.name)}</td>
+        <td>${aliases || '-'}</td>
+        <td>${groups || '-'}</td>
+        <td>${machines || '-'}</td>
+        <td>${a.expire_hours}h · ${a.expire_scope === 'machine' ? '机台共享' : '方位独立'}</td>
+        <td>${a.normal_count_min}~${a.normal_count_max}</td>
+        <td><button class="small" onclick="edit('${esc(a.id)}')">编辑</button> <button class="small danger" onclick="del('${esc(a.id)}','${esc(a.name)}')">删除</button></td>
+      </tr>`;
+                }).join('');
+                el.innerHTML = `<table><thead><tr><th>名称</th><th>别名</th><th>群号</th><th>机台</th><th>过期</th><th>正常范围</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+            } catch (e) { showError('加载失败：' + e.message); }
+        }
+
+        let allArcades = [];
+        async function edit(id) {
+            showError(null);
+            try {
+                const r = await get('arcades');
+                allArcades = r.data || [];
+                const a = allArcades.find(x => x.id === id);
+                if (!a) { showError('机厅不存在'); return; }
+                document.getElementById('formTitle').textContent = '编辑机厅：' + a.name;
+                document.getElementById('arcadeId').value = a.id;
+                document.getElementById('name').value = a.name || '';
+                document.getElementById('aliases').value = joinList(a.aliases);
+                document.getElementById('group_ids').value = joinList(a.group_ids);
+                document.getElementById('expire_hours').value = a.expire_hours;
+                document.getElementById('expire_scope').value = a.expire_scope;
+                document.getElementById('normal_count_min').value = a.normal_count_min;
+                document.getElementById('normal_count_max').value = a.normal_count_max;
+                document.getElementById('timezone').value = a.timezone || '';
+                document.getElementById('open_time').value = a.open_time || '';
+                document.getElementById('close_time').value = a.close_time || '';
+                document.getElementById('open_message_enabled').checked = !!a.open_message_enabled;
+                document.getElementById('close_message_enabled').checked = !!a.close_message_enabled;
+                document.getElementById('open_prompt_ref').value = a.open_prompt_ref || '';
+                document.getElementById('close_prompt_ref').value = a.close_prompt_ref || '';
+                document.getElementById('error_message_template').value = a.error_message_template || '';
+                renderMachines(a.machines);
+                window.scrollTo({ top: document.getElementById('arcadeList').offsetHeight, behavior: 'smooth' });
+            } catch (e) { showError('加载机厅失败：' + e.message); }
+        }
+        function renderMachines(machines) {
+            const wrap = document.getElementById('machines');
+            wrap.innerHTML = '';
+            Object.values(machines || {}).forEach(m => addMachine(m));
+        }
+        function addMachine(m) {
+            m = m || {};
+            const wrap = document.getElementById('machines');
+            const block = document.createElement('div');
+            block.className = 'machine-block';
+            block.innerHTML = `
+    <div class="machine-head">
+      <strong>机台</strong>
+      <button type="button" class="danger small" onclick="this.closest('.machine-block').remove()">删除机台</button>
+    </div>
+    <div class="row">
+      <div class="field"><label>机台名称 *</label><input class="m-name" value="${esc(m.name || '')}" placeholder="例如：舞萌DX" /></div>
+      <div class="field"><label>别名（逗号分隔）</label><input class="m-aliases" value="${esc(joinList(m.aliases))}" placeholder="例如：舞萌,maimai" /></div>
+      <div class="field inline-check"><input type="checkbox" class="m-default" ${m.is_default ? 'checked' : ''} /><label style="margin:0">默认机台</label></div>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <div class="field"><label>方位别名（每行一个，格式：key=别名 或 key）</label><textarea class="m-positions" placeholder="z=左&#10;y=右">${esc(posText(m.position_aliases))}</textarea></div>
+    </div>`;
+            wrap.appendChild(block);
+        }
+        function collectForm() {
+            const machines = [];
+            document.querySelectorAll('#machines .machine-block').forEach(b => {
+                const name = b.querySelector('.m-name').value.trim();
+                const aliases = splitList(b.querySelector('.m-aliases').value);
+                const isDefault = b.querySelector('.m-default').checked;
+                const position_aliases = parsePositionText(b.querySelector('.m-positions').value);
+                machines.push({ id: '', name, aliases, is_default: isDefault, position_aliases });
+            });
+            return {
+                arcade_id: document.getElementById('arcadeId').value,
+                name: document.getElementById('name').value.trim(),
+                aliases: splitList(document.getElementById('aliases').value),
+                group_ids: splitList(document.getElementById('group_ids').value),
+                expire_hours: parseFloat(document.getElementById('expire_hours').value),
+                expire_scope: document.getElementById('expire_scope').value,
+                normal_count_min: parseInt(document.getElementById('normal_count_min').value, 10),
+                normal_count_max: parseInt(document.getElementById('normal_count_max').value, 10),
+                timezone: document.getElementById('timezone').value.trim(),
+                open_time: document.getElementById('open_time').value.trim(),
+                close_time: document.getElementById('close_time').value.trim(),
+                open_message_enabled: document.getElementById('open_message_enabled').checked,
+                close_message_enabled: document.getElementById('close_message_enabled').checked,
+                open_prompt_ref: document.getElementById('open_prompt_ref').value.trim(),
+                close_prompt_ref: document.getElementById('close_prompt_ref').value.trim(),
+                error_message_template: document.getElementById('error_message_template').value,
+                machines,
+            };
+        }
+        async function validate() {
+            showError(null);
+            try {
+                const r = await post('validate', collectForm());
+                if (!r.ok) { showError(r.message || '校验失败'); } else { alert('校验通过'); }
+            } catch (e) { showError('校验失败：' + e.message); }
+        }
+        async function save() {
+            showError(null);
+            try {
+                const r = await post('arcades', collectForm());
+                if (!r.ok) { showError(r.message || '保存失败'); return; }
+                resetForm();
+                loadList();
+            } catch (e) { showError('保存失败：' + e.message); }
+        }
+        async function del(id, name) {
+            if (!confirm(`确定删除机厅「${name}」？其排卡记录和黑名单将一并删除。`)) return;
+            try {
+                const r = await post('arcades/delete', { arcade_id: id });
+                if (!r.ok) { showError(r.message || '删除失败'); return; }
+                loadList();
+            } catch (e) { showError('删除失败：' + e.message); }
+        }
+        function resetForm() {
+            document.getElementById('formTitle').textContent = '新增机厅';
+            document.getElementById('arcadeId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('aliases').value = '';
+            document.getElementById('group_ids').value = '';
+            document.getElementById('expire_hours').value = '4';
+            document.getElementById('expire_scope').value = 'slot';
+            document.getElementById('normal_count_min').value = '0';
+            document.getElementById('normal_count_max').value = '20';
+            document.getElementById('timezone').value = 'Asia/Shanghai';
+            document.getElementById('open_time').value = '';
+            document.getElementById('close_time').value = '';
+            document.getElementById('open_message_enabled').checked = false;
+            document.getElementById('close_message_enabled').checked = false;
+            document.getElementById('open_prompt_ref').value = '';
+            document.getElementById('close_prompt_ref').value = '';
+            document.getElementById('error_message_template').value = '{arcade} 报卡失败：数值 {value} 超出正常范围（{limit}）。';
+            document.getElementById('machines').innerHTML = '';
+            addMachine({ name: '舞萌DX', aliases: ['舞萌', 'maimai'], is_default: true, position_aliases: { z: '左', y: '右' } });
+        }
+
+        /* ---------- 设置与调试 ---------- */
+        async function parseTest() {
+            showError(null);
+            const text = document.getElementById('text').value.trim();
+            if (!text) { showError('请输入消息文本'); return; }
+            const groupId = document.getElementById('group_id').value.trim();
+            try {
+                const r = await post('parse', { text, group_id: groupId });
+                const box = document.getElementById('parseResult');
+                box.style.display = 'block';
+                if (!r.ok) { box.innerHTML = `<pre>解析失败：${esc(r.message || '未知错误')}</pre>`; return; }
+                const d = r.data || {};
+                let html = '';
+                html += `<p class="muted">归一化文本：<b>${esc(d.normalized)}</b></p>`;
+                if (d.matched_arcade) {
+                    html += `<p><span class="badge ok">已匹配机厅</span> ${esc(d.matched_arcade.name)}（${esc(d.matched_arcade.id)}）</p>`;
+                } else if (d.ambiguous) {
+                    html += `<p><span class="badge warn">多机厅歧义</span> ${esc(d.message || '')}</p>`;
+                } else if (!d.matched_arcade && d.message) {
+                    html += `<p><span class="badge warn">未匹配机厅</span> ${esc(d.message || '')}</p>`;
+                }
+                if (d.is_query) {
+                    html += `<p><span class="badge info">查询</span></p>`;
+                    ((d.report && d.report.machines) || []).forEach(m => {
+                        html += `<p>机台：<b>${esc(m.machine)}</b></p><ul>`;
+                        (m.positions || []).forEach(p => { html += `<li>${esc(p.label)}：<b>${p.count}</b> 人</li>`; });
+                        html += '</ul>';
+                    });
+                } else if (d.report) {
+                    html += `<p><span class="badge info">报卡</span> 机台：<b>${esc(d.report.machine)}</b></p><ul>`;
+                    (d.report.entries || []).forEach(e => {
+                        const sign = e.decrement ? '-' : (e.increment ? '+' : '=');
+                        const mode = e.decrement ? '扣减' : (e.increment ? '累加' : '覆盖');
+                        html += `<li>${esc(e.label)}：${sign}${e.count}（${mode}）</li>`;
+                    });
+                    html += '</ul>';
+                } else if (d.unparseable_attempt) {
+                    html += `<p><span class="badge warn">异常尝试</span> ${esc(d.message || '识别为一次失败的报卡尝试')}</p>`;
+                } else {
+                    html += `<p class="muted">${esc(d.message || '未识别为报卡或查询')}</p>`;
+                }
+                box.innerHTML = html;
+            } catch (e) { showError('解析失败：' + e.message); }
+        }
+
+        async function loadLogs() {
+            showError(null);
+            try {
+                const r = await get('logs', { limit: 100 });
+                const box = document.getElementById('logs');
+                if (!r.ok) { box.innerHTML = '<div class="empty">加载失败：' + esc(r.message || '') + '</div>'; return; }
+                const list = r.data || [];
+                if (!list.length) { box.innerHTML = '<div class="empty">暂无日志</div>'; return; }
+                const rows = list.slice().reverse().map(l => {
+                    const lv = l.level === 'error' ? '<span class="badge warn">error</span>' : (l.level === 'warn' ? '<span class="badge warn">warn</span>' : '<span class="badge info">info</span>');
+                    return `<tr><td>${fmtTime(l.ts)}</td><td>${lv}</td><td>${esc(l.group_id)}</td><td>${esc(l.message)}</td></tr>`;
+                }).join('');
+                box.innerHTML = `<table><thead><tr><th>时间</th><th>级别</th><th>群号</th><th>内容</th></tr></thead><tbody>${rows}</tbody></table>`;
+            } catch (e) { showError('加载日志失败：' + e.message); }
+        }
+
+        /* ---------- 页签切换 ---------- */
+        function switchTab(name) {
+            document.querySelectorAll('.page').forEach(p => {
+                p.classList.toggle('active', p.dataset.tab === name);
+            });
+            document.querySelectorAll('#tabs button').forEach(b => {
+                b.classList.toggle('active', b.dataset.tab === name);
+            });
+            showError(null);
+            if (name === 'dashboard') refresh();
+            else if (name === 'arcades') loadList();
+            else if (name === 'settings') loadLogs();
+        }
+
+        /* ---------- 初始化 ---------- */
+        document.getElementById('clearAbnormal').addEventListener('click', async () => {
+            if (!confirm('确定清空全部黑名单记录？')) return;
+            try {
+                const r = await post('abnormal/clear', {});
+                if (!r.ok) { alert(r.message || '清空失败'); return; }
+                refresh();
+            } catch (e) { alert('清空失败：' + e.message); }
+        });
+        document.getElementById('text').addEventListener('keydown', e => { if (e.key === 'Enter') parseTest(); });
+        document.querySelectorAll('#tabs button').forEach(b => {
+            b.addEventListener('click', () => switchTab(b.dataset.tab));
+        });
+        refresh();
+        loadList();
+        resetForm();
+        loadLogs();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,11 @@
+{
+    "metadata": {
+        "display_name": "Maimai Card Report"
+    },
+    "views": {
+        "dashboard": {
+            "title": "Console",
+            "description": "Queue board, arcade management, message parse testing and operation logs"
+        }
+    }
+}

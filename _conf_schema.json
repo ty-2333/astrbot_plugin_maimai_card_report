@@ -1,0 +1,46 @@
+{
+    "global_defaults": {
+        "description": "全局默认设置（新建机厅时继承）",
+        "type": "object",
+        "hint": "这些值作为新建机厅时的默认值，也可在插件控制面板「设置」页调整。",
+        "items": {
+            "expire_hours": {
+                "description": "过期小时数",
+                "type": "float",
+                "default": 4,
+                "hint": "报卡后超过该小时数自动清零"
+            },
+            "normal_count_min": {
+                "description": "正常卡数下限",
+                "type": "int",
+                "default": 0
+            },
+            "normal_count_max": {
+                "description": "正常卡数上限",
+                "type": "int",
+                "default": 20
+            },
+            "expire_scope": {
+                "description": "清零粒度",
+                "type": "string",
+                "default": "slot",
+                "options": [
+                    "slot",
+                    "machine"
+                ],
+                "hint": "slot：按机台+方位独立计时；machine：同机台共享计时"
+            },
+            "timezone": {
+                "description": "默认时区",
+                "type": "string",
+                "default": "Asia/Shanghai"
+            },
+            "error_message_template": {
+                "description": "异常报卡默认错误提示",
+                "type": "string",
+                "default": "{arcade} 报卡失败：数值 {value} 超出正常范围（{limit}）。",
+                "hint": "支持变量 {arcade}、{qq}、{value}、{limit}"
+            }
+        }
+    }
+}

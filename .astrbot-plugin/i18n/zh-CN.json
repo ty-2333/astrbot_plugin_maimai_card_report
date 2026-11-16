@@ -1,0 +1,11 @@
+{
+    "metadata": {
+        "display_name": "舞萌报卡"
+    },
+    "views": {
+        "dashboard": {
+            "title": "控制台",
+            "description": "排卡看板、机厅管理、消息解析测试与操作日志"
+        }
+    }
+}
