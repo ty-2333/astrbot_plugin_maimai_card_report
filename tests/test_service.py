@@ -288,10 +288,18 @@ class TestService(unittest.TestCase):
     # ---------- 异常文案 / 清零 / 通知 ----------
 
     def test_unparseable_error_message_not_about_range(self):
-        # 格式异常不应套用「超出正常范围」模板
-        outcome = asyncio.run(self.service.handle_event(FakeEvent("卡")))
+        # 格式异常不应套用「超出正常范围」模板（用带符号但缺人数的输入触发）
+        outcome = asyncio.run(self.service.handle_event(FakeEvent("左+")))
         self.assertIn("没能识别出报卡人数", outcome.reply)
         self.assertNotIn("超出正常范围", outcome.reply)
+
+    def test_position_or_unit_words_are_silent(self):
+        # 只有方位/单位、没有数字或符号的短词不构成报卡尝试，也不计异常
+        for text in ("卡", "左", "右", "z", "y", "左右", "人", "k"):
+            with self.subTest(text=text):
+                outcome = asyncio.run(self.service.handle_event(FakeEvent(text)))
+                self.assertIsNone(outcome.reply)
+        self.assertIsNone(self.store.get_abnormal("a_1", "222222"))
 
     def test_out_of_range_error_message_keeps_template(self):
         outcome = asyncio.run(self.service.handle_event(FakeEvent("左30")))

@@ -343,9 +343,12 @@ def _has_report_signal(rest: str, arcade: Arcade) -> bool:
 def looks_like_report_attempt(rest: str, arcade: Arcade) -> bool:
     """判断去除机厅别名后、但未能解析成功的内容是否为一次失败的报卡尝试。
 
-    为避免普通群聊误触发，仅当内容足够短、只由报卡相关符号组成
-    （卡数单位 / 方位别名 / 数字 / 正负号），且含明确报卡信号时，
-    才视为报卡尝试。裸数字不算尝试，会被当作普通聊天静默忽略。
+    为避免普通群聊误触发，只把「短、无杂散字符、且带明确报卡信号」的文本
+    视为尝试。两类内容会被排除：
+
+    - 裸数字（``6``、``666``）：没有单位或符号，是普通聊天；
+    - 只含方位名 / 单位、但没有任何数字或正负号的短词（``卡``、``左``、
+      ``左右``、``z``）：同样只是聊天，不构成报卡尝试。
     """
     rest = rest.strip()
     if not rest:
@@ -353,5 +356,8 @@ def looks_like_report_attempt(rest: str, arcade: Arcade) -> bool:
     if len(rest) > 12:
         return False
     if _report_residue(rest, arcade):
+        return False
+    # 没有任何数字或正负号 → 不可能是在报人数
+    if not re.search(r"[0-9+\-]", rest):
         return False
     return _has_report_signal(rest, arcade)

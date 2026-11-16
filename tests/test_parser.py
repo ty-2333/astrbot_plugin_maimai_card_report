@@ -202,8 +202,14 @@ class TestQuery(unittest.TestCase):
 class TestLooksLikeAttempt(unittest.TestCase):
     def test_attempt(self):
         arcade = make_arcade()
-        # 含卡数单位 / 方位别名但缺数字 → 视为一次失败的报卡尝试
-        self.assertTrue(looks_like_report_attempt("左k", arcade))
+        # 有数字时，含方位/单位但解析失败的短内容才算尝试
+        self.assertTrue(looks_like_report_attempt("左5k", arcade))
+        self.assertTrue(looks_like_report_attempt("5k5k5k5k5k5k", arcade))
+
+    def test_unit_without_number_not_attempt(self):
+        # 只有单位/方位、没有数字或正负号 → 普通聊天
+        arcade = make_arcade()
+        self.assertFalse(looks_like_report_attempt("左k", arcade))
 
     def test_not_attempt(self):
         arcade = make_arcade()
@@ -234,6 +240,19 @@ class TestLooksLikeAttempt(unittest.TestCase):
     def test_date_with_dash_not_attempt(self):
         arcade = make_arcade()
         self.assertFalse(looks_like_report_attempt("2026-11", arcade))
+
+    def test_position_or_unit_only_words_not_attempt(self):
+        # 只有方位/单位、没有数字或正负号，是普通聊天
+        arcade = make_arcade()
+        for text in ("卡", "左", "右", "z", "y", "左右", "人", "k", "卡卡"):
+            self.assertFalse(looks_like_report_attempt(text, arcade), text)
+
+    def test_attempt_needs_number_or_sign(self):
+        arcade = make_arcade()
+        # 有杂散字符 → 不算尝试
+        self.assertFalse(looks_like_report_attempt("左5x", arcade))
+        # 带正负号 → 仍视为报卡尝试
+        self.assertTrue(looks_like_report_attempt("z++", arcade))
 
 
 class TestReportBoundaries(unittest.TestCase):
