@@ -40,6 +40,24 @@
                 "type": "string",
                 "default": "{arcade} 报卡失败：数值 {value} 超出正常范围（{limit}）。",
                 "hint": "支持变量 {arcade}、{qq}、{value}、{limit}"
+            },
+            "log_level": {
+                "description": "面板日志级别",
+                "type": "string",
+                "default": "info",
+                "options": [
+                    "debug",
+                    "info",
+                    "warn",
+                    "error"
+                ],
+                "hint": "debug 会记录每条群消息的收发详情（日志增长很快）；info 只记录报卡、查询、异常等业务事件"
+            },
+            "log_max_entries": {
+                "description": "面板日志保留条数",
+                "type": "int",
+                "default": 1000,
+                "hint": "超过后丢弃最早的记录；默认 1000 条，info 级别下约可保留数天"
             }
         }
     }

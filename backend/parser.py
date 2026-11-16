@@ -122,35 +122,68 @@ def _position_pattern(machine: Machine) -> re.Pattern | None:
     )
 
 
+def _entry_from_match(m: re.Match, tokens: list[tuple[str, str]]) -> ParsedEntry | None:
+    """把单个正则匹配转换为报卡条目。"""
+    if m.group("n1") is not None:
+        count = int(m.group("n1"))
+        sign = m.group("sign1") or ""
+        pos_key = _lookup_pos_key(tokens, m.group("a1"))
+    else:
+        count = int(m.group("n2"))
+        sign = m.group("sign2") or ""
+        pos_key = _lookup_pos_key(tokens, m.group("a2"))
+    if not pos_key:
+        return None
+    return ParsedEntry(pos_key, count, sign == "+", sign == "-")
+
+
+def _scan_entries(
+    text: str,
+    pattern: re.Pattern,
+    tokens: list[tuple[str, str]],
+    strict: bool,
+) -> list[ParsedEntry] | None:
+    """扫描方位报卡；strict 模式要求匹配从开头连续覆盖到结尾。"""
+    entries: list[ParsedEntry] = []
+    pos = 0
+    for m in pattern.finditer(text):
+        if strict and m.start() != pos:
+            return None
+        entry = _entry_from_match(m, tokens)
+        if entry is not None:
+            entries.append(entry)
+        pos = m.end()
+    if strict and (not entries or pos != len(text)):
+        return None
+    return entries
+
+
 def parse_position_entries(text: str, machine: Machine) -> list[ParsedEntry]:
     """解析 'z1y2'、'内1k外2k'、'z+1y2'、'z-1'、'1p' 等方位报卡。
 
     ``+`` 表示累加、``-`` 表示扣减、无符号表示覆盖；扣减量始终以
     非负数的形式保存在 ``count`` 中，由 ``decrement`` 标记方向。
+
+    解析时优先找「能完整消耗到结尾」的后缀，再把它前面的内容按宽松
+    模式补扫一遍。这样 ``中二z1y2`` 经归一化变成 ``中2z1y2`` 后，前缀
+    机器名里的数字不会被当成方位人数（正确结果是左 1、右 2），而
+    ``左5 z1y2`` 这类多段报卡也不会丢。
     """
     pattern = _position_pattern(machine)
     if pattern is None:
         return []
     tokens = machine_position_tokens(machine)
-    entries: list[ParsedEntry] = []
-    for m in pattern.finditer(text):
-        if m.group("n1") is not None:
-            count = int(m.group("n1"))
-            sign = m.group("sign1") or ""
-            pos_key = _lookup_pos_key(tokens, m.group("a1"))
-            if pos_key:
-                entries.append(
-                    ParsedEntry(pos_key, count, sign == "+", sign == "-")
-                )
-        else:
-            count = int(m.group("n2"))
-            sign = m.group("sign2") or ""
-            pos_key = _lookup_pos_key(tokens, m.group("a2"))
-            if pos_key:
-                entries.append(
-                    ParsedEntry(pos_key, count, sign == "+", sign == "-")
-                )
-    return entries
+
+    if len(text) <= 64:
+        for start in range(len(text)):
+            suffix = _scan_entries(text[start:], pattern, tokens, strict=True)
+            if not suffix:
+                continue
+            prefix = _scan_entries(text[:start], pattern, tokens, strict=False) or []
+            return prefix + suffix
+
+    entries = _scan_entries(text, pattern, tokens, strict=False)
+    return entries or []
 
 
 _COUNT_ONLY_RE = re.compile(

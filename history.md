@@ -464,3 +464,15 @@ reference/astrbot_plugin_meme_manager/
 - 推送内容仅限插件本体：根目录脚本与配置、`backend/`、`mixins/`、`pages/`、`.astrbot-plugin/i18n/`、`tests/`、`README.md`、`LICENSE`、`history.md`、`requirements.txt`
 - 排除项：`reference/`（第三方参考项目）、`data/`（本地运行数据）、`__pycache__/`、`*.zip`
 - 未改动：`history.md` 内历史条目中的 `Tool-yang` 属历史记录，保持原样
+
+### 2026-11-17 - 错误文案 / 解析 / 通知可靠性 / 日志与状态清理
+- 错误文案分流（`backend/service.py` `format_error`）：无法解析不再套用「超出正常范围」模板，改为「没能识别出报卡人数，请按 z1y2 / 5k / 左3 这样的格式发送」；超范围仍走机厅自定义 `error_message_template`
+- 方位解析修正（`backend/parser.py`）：改为「后缀严格 + 前缀宽松」合并扫描，`中二z1y2`（归一化成 `中2z1y2`）现在正确解析为左 1 右 2，不再把机台名里的数字当成方位人数；`左5 z1y2` 这类多段报卡不会丢
+- 黑名单自动解除补漏（需求 §7.2）：定时清零路径 `clear_expired()` 原本已实现「机台全部方位超时清零 → 清除该机台黑名单」，但 `lazy_clear_machine()` 漏了同一步，已补齐，两条路径行为一致
+- 开门/闭店语（`_send_notice` 改为返回 bool）：只有至少一个群发送成功才写入 `last_open_notice` / `last_close_notice`；无群会话、context 不可用、发送异常时保持未发送状态，定时任务在同一分钟内继续重试
+- 日志可配置：`_conf_schema.json` 新增 `log_level`（默认 info）与 `log_max_entries`（默认 1000），由 `main.py` 读取后传入 `PluginStore`；`add_log()` 按级别过滤，debug 只记录每条群消息收发，info 只留报卡/查询/异常等业务事件，日志体积大幅下降
+- 状态清理：`PluginStore.prune_group_sessions()` 在数据加载、机厅保存/删除后清理已解绑群的会话映射（本次实测清除 4 条残留：1059887064 / 1128316483 / 817182300 / 860816261）
+- 清零文案：查询结果由「4小时无人报卡，清零于 X」改为「已超时清零，最后报卡 X」，避免把「至少 4 小时」误读成精确 4 小时
+- 验证：`python -m unittest discover -s tests -t .` 90 个用例通过（81 → 90），新增解析、文案、惰性清零黑名单、通知返回值、日志级别/上限、会话清理用例
+- 版本号：`metadata.yaml` 1.1.0 → 1.1.1
+- 暂未处理（待确认）：单字/方位词（卡、左、右、z、y、左右）仍会被计为异常；机台别名+裸数字（`tg2`、`wm3`）与 `@机器人 + 5k` 仍静默

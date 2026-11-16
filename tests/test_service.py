@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from .helpers import FakeEvent, make_arcade, make_machine
-from astrbot_plugin_maimai_card_report.backend.models import CardRecord
+from astrbot_plugin_maimai_card_report.backend.models import AbnormalUser, CardRecord
 from astrbot_plugin_maimai_card_report.backend.service import ReportService
 from astrbot_plugin_maimai_card_report.backend.store import PluginStore
 from astrbot_plugin_maimai_card_report.utils import now_ts
@@ -240,7 +240,7 @@ class TestService(unittest.TestCase):
         )
         self.store.set_record(rec)
         outcome = asyncio.run(self.service.handle_event(FakeEvent("几卡")))
-        self.assertIn("左：0 人（4小时无人报卡，清零于 ", outcome.reply)
+        self.assertIn("左：0 人（已超时清零，最后报卡 ", outcome.reply)
 
     def test_query_stale_zero_count_non_default(self):
         self.store.upsert_arcade(make_arcade(
@@ -261,7 +261,7 @@ class TestService(unittest.TestCase):
             count=0, last_update_at=now_ts() - 10 * 3600,
         ))
         outcome = asyncio.run(self.service.handle_event(FakeEvent("几卡")))
-        self.assertIn("总：0 人（4小时无人报卡，清零于 ", outcome.reply)
+        self.assertIn("总：0 人（已超时清零，最后报卡 ", outcome.reply)
 
     def test_query_fresh_zero_count_not_cleared(self):
         self.store.upsert_arcade(make_arcade(
@@ -284,6 +284,38 @@ class TestService(unittest.TestCase):
         outcome = asyncio.run(self.service.handle_event(FakeEvent("几卡")))
         self.assertIn("总：0 人（更新于 ", outcome.reply)
         self.assertNotIn("清零于", outcome.reply)
+
+    # ---------- 异常文案 / 清零 / 通知 ----------
+
+    def test_unparseable_error_message_not_about_range(self):
+        # 格式异常不应套用「超出正常范围」模板
+        outcome = asyncio.run(self.service.handle_event(FakeEvent("卡")))
+        self.assertIn("没能识别出报卡人数", outcome.reply)
+        self.assertNotIn("超出正常范围", outcome.reply)
+
+    def test_out_of_range_error_message_keeps_template(self):
+        outcome = asyncio.run(self.service.handle_event(FakeEvent("左30")))
+        self.assertIn("超出正常范围（0-20）", outcome.reply)
+
+    def test_lazy_clear_machine_clears_blacklist(self):
+        # 需求 §7.2：机台全部方位超时清零时解除该机台黑名单
+        self.store.set_record(CardRecord(
+            arcade_id="a_1", machine_id="m_maimai", position_key="z",
+            count=5, last_update_at=now_ts() - 10 * 3600,
+        ))
+        self.store.set_abnormal(AbnormalUser(
+            arcade_id="a_1", qq="u1", machine_id="m_maimai",
+            abnormal_count=5, status="ignored",
+        ))
+        arcade = self.store.get_arcade("a_1")
+        cleared = self.service.lazy_clear_machine(arcade, arcade.machines["m_maimai"])
+        self.assertTrue(cleared)
+        self.assertIsNone(self.store.get_abnormal("a_1", "u1"))
+
+    def test_send_notice_without_session_returns_false(self):
+        # 没有群会话时发送失败，调用方不应把当天标记为已发
+        arcade = self.store.get_arcade("a_1")
+        self.assertFalse(asyncio.run(self.service._send_notice(arcade, "open")))
 
 
 if __name__ == "__main__":

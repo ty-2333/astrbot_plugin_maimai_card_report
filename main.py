@@ -28,7 +28,13 @@ class MaiMaiCardReport(Star, WebAPIMixin, EventHandlerMixin):
         self.config = config if config is not None else {}
         self._data_dir = get_plugin_data_dir()
         logger.info(f"[{PLUGIN_NAME}] 插件初始化，数据目录：{self._data_dir}")
-        self.store = PluginStore(self._data_dir)
+        defaults = self.config.get("global_defaults")
+        defaults = defaults if isinstance(defaults, dict) else {}
+        self.store = PluginStore(
+            self._data_dir,
+            log_level=str(defaults.get("log_level") or "info"),
+            log_max_entries=int(defaults.get("log_max_entries") or 1000),
+        )
         self.service = ReportService(self.store, context)
         self._scheduler_task: asyncio.Task | None = None
 

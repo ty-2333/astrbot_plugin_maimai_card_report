@@ -6,7 +6,7 @@ desc: >-
   排卡人数查询、超时自动清零、异常报卡过滤与黑名单，以及每日开门/闭店语自动生成发送，
   并提供完整的 WebUI 控制面板。
 help: 直接发送报卡文本即可记录，例如：zy5k、zy+1k、zy-1、z1y2、中二z1y2、内1k外2k；查询排卡发送：zyjk、兆阳几卡、zy?k。
-version: 1.1.0
+version: 1.1.1
 author: ty-2333
 repo: https://github.com/ty-2333/astrbot_plugin_maimai_card_report
 astrbot_version: ">=4.28.2"

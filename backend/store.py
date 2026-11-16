@@ -21,12 +21,24 @@ from ..utils import new_id, now_ts
 from .models import AbnormalUser, Arcade, CardRecord, LogEntry, PluginState
 
 
+DEFAULT_LOG_LEVEL = "info"
+DEFAULT_LOG_MAX_ENTRIES = 1000
+LOG_LEVEL_ORDER = {"debug": 10, "info": 20, "warn": 30, "warning": 30, "error": 40}
+
+
 class PluginStore:
     """插件数据仓库。"""
 
-    def __init__(self, data_dir: Path):
+    def __init__(
+        self,
+        data_dir: Path,
+        log_level: str = DEFAULT_LOG_LEVEL,
+        log_max_entries: int = DEFAULT_LOG_MAX_ENTRIES,
+    ):
         self.data_dir = Path(data_dir)
         self._lock = threading.RLock()
+        self.log_level = self._normalize_level(log_level)
+        self.log_max_entries = max(100, int(log_max_entries or DEFAULT_LOG_MAX_ENTRIES))
         self.arcades: dict[str, Arcade] = {}
         self.records: dict[tuple[str, str, str], CardRecord] = {}
         self.abnormal: dict[tuple[str, str], AbnormalUser] = {}
@@ -40,6 +52,24 @@ class PluginStore:
         )
 
     # —— 文件读写 ——
+    @staticmethod
+    def _normalize_level(level: str | None) -> str:
+        value = str(level or DEFAULT_LOG_LEVEL).strip().lower()
+        return value if value in LOG_LEVEL_ORDER else DEFAULT_LOG_LEVEL
+
+    def set_log_options(
+        self, level: str | None = None, max_entries: int | None = None
+    ) -> None:
+        """运行时调整日志级别与保留条数（面板配置变更后调用）。"""
+        with self._lock:
+            if level:
+                self.log_level = self._normalize_level(level)
+            if max_entries:
+                self.log_max_entries = max(100, int(max_entries))
+            if len(self.logs) > self.log_max_entries:
+                self.logs = self.logs[-self.log_max_entries :]
+                self.save_logs()
+
     def _path(self, filename: str) -> Path:
         return self.data_dir / filename
 
@@ -103,10 +133,13 @@ class PluginStore:
 
             raw_logs = self._load_json(DATA_FILE_LOGS) or []
             if isinstance(raw_logs, list):
-                self.logs = [LogEntry.from_dict(x) for x in raw_logs][-1000:]
+                self.logs = [LogEntry.from_dict(x) for x in raw_logs][
+                    -self.log_max_entries :
+                ]
 
             raw_state = self._load_json(DATA_FILE_STATE) or {}
             self.state = PluginState.from_dict(raw_state)
+            self.prune_group_sessions()
 
     # —— 机厅 ——
     def save_arcades(self) -> None:
@@ -224,11 +257,14 @@ class PluginStore:
 
     # —— 日志 ——
     def add_log(self, level: str, group_id: str, message: str) -> None:
+        level = (level or "info").lower()
+        if LOG_LEVEL_ORDER.get(level, 20) < LOG_LEVEL_ORDER.get(self.log_level, 20):
+            return
         with self._lock:
             entry = LogEntry(id=new_id("l_"), ts=now_ts(), level=level, group_id=group_id, message=message)
             self.logs.append(entry)
-            if len(self.logs) > 1000:
-                self.logs = self.logs[-1000:]
+            if len(self.logs) > self.log_max_entries:
+                self.logs = self.logs[-self.log_max_entries :]
             self.save_logs()
 
     def list_logs(self, limit: int = 200) -> list[LogEntry]:
@@ -243,3 +279,26 @@ class PluginStore:
     def save_state(self) -> None:
         with self._lock:
             self._save_json(DATA_FILE_STATE, self.state.to_dict())
+
+    def prune_group_sessions(self) -> int:
+        """移除已不再绑定任何机厅的群会话映射，返回清理条数。
+
+        群会话只用于开门/闭店语主动发送，解绑后的群保留映射没有意义，
+        长期累积会让 state.json 越来越大。
+        """
+        with self._lock:
+            bound = {
+                gid
+                for arcade in self.arcades.values()
+                for gid in arcade.group_ids
+                if gid
+            }
+            stale = [gid for gid in self.state.group_sessions if gid not in bound]
+            for gid in stale:
+                del self.state.group_sessions[gid]
+            if stale:
+                self.save_state()
+                logger.info(
+                    f"[{PLUGIN_NAME}] 清理已解绑群的会话映射 {len(stale)} 条：{stale}"
+                )
+            return len(stale)

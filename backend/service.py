@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from ..config import (
+    ABNORMAL_UNPARSEABLE,
     DEFAULT_ERROR_MESSAGE_TEMPLATE,
     DEFAULT_TIMEZONE,
     HELP_CONTAINS,
@@ -401,6 +402,14 @@ class ReportService:
 
     def format_error(self, arcade: Arcade, qq: str, value, machine: Machine | None = None) -> str:
         limit = f"{arcade.normal_count_min}-{arcade.normal_count_max}"
+        # 无法解析（格式异常）与超范围是两类问题，不能共用「超出正常范围」模板，
+        # 否则会出现「数值 无法解析 超出正常范围」这种自相矛盾的提示。
+        if isinstance(value, str) and value == ABNORMAL_UNPARSEABLE:
+            msg = (
+                f"{arcade.name} 报卡失败：没能识别出报卡人数，"
+                f"请按 z1y2 / 5k / 左3 这样的格式发送。"
+            )
+            return f"{msg}\n{self.help_hint()}"
         template = arcade.error_message_template or DEFAULT_ERROR_MESSAGE_TEMPLATE
         try:
             msg = template.format(arcade=arcade.name, qq=qq, value=value, limit=limit)
@@ -472,8 +481,6 @@ class ReportService:
         self.lazy_clear_machine(arcade, machine)
         lines: list[str] = []
         now = now_ts()
-        hours = arcade.expire_hours
-        hours_str = str(int(hours)) if float(hours).is_integer() else str(hours)
         for pos_key in machine.position_keys:
             label = machine.position_aliases.get(pos_key, pos_key)
             rec = self.store.get_record(arcade.id, machine.id, pos_key)
@@ -486,8 +493,9 @@ class ReportService:
                 if now >= expire_at:
                     cleared_at = expire_at
             if count <= 0 and cleared_at > 0:
-                clear_str = format_time(cleared_at, arcade.timezone)
-                lines.append(f"{label}：0 人（{hours_str}小时无人报卡，清零于 {clear_str}）")
+                last = rec.last_update_at if rec else 0
+                last_str = format_time(last, arcade.timezone) if last else "-"
+                lines.append(f"{label}：0 人（已超时清零，最后报卡 {last_str}）")
                 continue
             last = rec.last_update_at if rec else 0
             time_str = format_time(last, arcade.timezone) if last else "-"
@@ -533,6 +541,17 @@ class ReportService:
             logger.info(
                 f"[{PLUGIN_NAME}] 惰性清零 arcade={arcade.name} machine={machine.name}"
             )
+            # 与定时清零保持一致：该机台全部方位都已清零时，顺带解除相关黑名单
+            # （需求 §7.2：忽略状态持续到机台超时清零）。
+            if self.machine_all_cleared(arcade.id, machine.id):
+                self.store.clear_machine_abnormal(arcade.id, machine.id)
+                logger.info(
+                    f"[{PLUGIN_NAME}] 惰性清零并清除黑名单 arcade={arcade.name} "
+                    f"machine={machine.name}"
+                )
+                self.store.add_log(
+                    "info", "", f"{arcade.name} {machine.name} 全部超时清零，已清除相关黑名单"
+                )
         return cleared
 
     def clear_expired(self) -> list[str]:
@@ -600,9 +619,9 @@ class ReportService:
             and arcade.open_time == current_hm
             and self.store.state.last_open_notice.get(arcade.id) != today
         ):
-            await self._send_notice(arcade, "open")
-            self.store.state.last_open_notice[arcade.id] = today
-            self.store.save_state()
+            if await self._send_notice(arcade, "open"):
+                self.store.state.last_open_notice[arcade.id] = today
+                self.store.save_state()
 
         if (
             arcade.close_message_enabled
@@ -610,11 +629,16 @@ class ReportService:
             and arcade.close_time == current_hm
             and self.store.state.last_close_notice.get(arcade.id) != today
         ):
-            await self._send_notice(arcade, "close")
-            self.store.state.last_close_notice[arcade.id] = today
-            self.store.save_state()
+            if await self._send_notice(arcade, "close"):
+                self.store.state.last_close_notice[arcade.id] = today
+                self.store.save_state()
 
-    async def _send_notice(self, arcade: Arcade, kind: str) -> None:
+    async def _send_notice(self, arcade: Arcade, kind: str) -> bool:
+        """生成并发送开门/闭店语；返回是否至少有一个群发送成功。
+
+        调用方只在返回 True 时把当天标记为「已发送」，失败（无群会话、
+        context 不可用、发送异常）留待下一轮定时检查在同一分钟内重试。
+        """
         scene = "开门" if kind == "open" else "闭店"
         prompt_ref = arcade.open_prompt_ref if kind == "open" else arcade.close_prompt_ref
         text = await self._generate_notice_text(arcade, scene, prompt_ref)
@@ -630,7 +654,7 @@ class ReportService:
                 f"[{PLUGIN_NAME}] {arcade.name} {scene}语已生成，但无可用群会话，未能发送"
             )
             self.store.add_log("warn", "", f"{arcade.name} {scene}语已生成，但无可用群会话，未能发送")
-            return
+            return False
 
         # context 为空时无法主动发消息（仅测试/本地回退会出现），直接记录并返回
         if self.context is None:
@@ -638,14 +662,14 @@ class ReportService:
                 f"[{PLUGIN_NAME}] {arcade.name} {scene}语无法发送：context 不可用"
             )
             self.store.add_log("warn", "", f"{arcade.name} {scene}语无法发送：context 不可用")
-            return
+            return False
         send_message = getattr(self.context, "send_message", None)
         if not callable(send_message):
             logger.warning(
                 f"[{PLUGIN_NAME}] {arcade.name} {scene}语无法发送：context 缺少 send_message"
             )
             self.store.add_log("warn", "", f"{arcade.name} {scene}语无法发送：context 缺少 send_message")
-            return
+            return False
 
         try:
             from astrbot.api.event import MessageChain  # noqa: PLC0415
@@ -655,19 +679,32 @@ class ReportService:
                 exc_info=True,
             )
             self.store.add_log("error", "", f"{arcade.name} {scene}语发送失败：无法加载 MessageChain")
-            return
+            return False
 
+        success_count = 0
         for session in sessions:
             try:
                 await send_message(session, MessageChain().message(text))
+                success_count += 1
             except Exception as e:  # noqa: BLE001
                 logger.error(
                     f"[{PLUGIN_NAME}] {arcade.name} {scene}语发送失败 session={session}",
                     exc_info=True,
                 )
                 self.store.add_log("error", "", f"{arcade.name} {scene}语发送失败：{e}")
-        logger.info(f"[{PLUGIN_NAME}] {arcade.name} 已发送{scene}语 sessions={len(sessions)}")
+
+        if success_count == 0:
+            logger.warning(
+                f"[{PLUGIN_NAME}] {arcade.name} {scene}语全部发送失败，稍后重试"
+            )
+            return False
+
+        logger.info(
+            f"[{PLUGIN_NAME}] {arcade.name} 已发送{scene}语 "
+            f"sessions={success_count}/{len(sessions)}"
+        )
         self.store.add_log("info", "", f"{arcade.name} 已发送{scene}语")
+        return True
 
     async def _generate_notice_text(self, arcade: Arcade, scene: str, prompt_ref: str | None) -> str:
         prompt = (

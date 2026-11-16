@@ -79,6 +79,35 @@ class TestPluginStore(unittest.TestCase):
         store2 = PluginStore(Path(self.tmp.name))
         self.assertEqual(store2.get_arcade("a_1").name, "天河城")
 
+    def test_log_level_filters_debug(self):
+        store = PluginStore(Path(self.tmp.name), log_level="info")
+        store.add_log("debug", "111", "调试日志")
+        store.add_log("info", "111", "业务日志")
+        messages = [x.message for x in store.list_logs(10)]
+        self.assertNotIn("调试日志", messages)
+        self.assertIn("业务日志", messages)
+
+    def test_log_max_entries_configurable(self):
+        store = PluginStore(Path(self.tmp.name), log_max_entries=100)
+        for i in range(120):
+            store.add_log("info", "111", f"日志{i}")
+        self.assertEqual(len(store.list_logs(1000)), 100)
+        self.assertEqual(store.list_logs(1)[0].message, "日志119")
+
+    def test_prune_group_sessions(self):
+        self.store.upsert_arcade(make_arcade(group_ids=["111111"]))
+        self.store.state.group_sessions = {
+            "111111": "bot:GroupMessage:111111",
+            "222222": "bot:GroupMessage:222222",
+        }
+        self.store.save_state()
+        self.assertEqual(self.store.prune_group_sessions(), 1)
+        self.assertIn("111111", self.store.state.group_sessions)
+        self.assertNotIn("222222", self.store.state.group_sessions)
+        # 重新加载后仍然是清理后的结果
+        store2 = PluginStore(Path(self.tmp.name))
+        self.assertNotIn("222222", store2.state.group_sessions)
+
 
 if __name__ == "__main__":
     unittest.main()

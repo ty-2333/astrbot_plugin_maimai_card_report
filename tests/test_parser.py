@@ -81,6 +81,18 @@ class TestParseReport(unittest.TestCase):
         self.assertEqual([(e.position_key, e.count) for e in parsed.entries],
                          [("z", 2), ("y", 3)])
 
+    def test_numeric_prefix_not_taken_as_count(self):
+        # 「中二」会被归一化成「中2」，前缀这个 2 不能被当成左方位的人数
+        parsed = parse_report(normalize_text("中二z1y2"), self.arcade)
+        self.assertEqual([(e.position_key, e.count) for e in parsed.entries],
+                         [("z", 1), ("y", 2)])
+
+    def test_multi_segment_with_space_keeps_all(self):
+        parsed = parse_report(normalize_text("左5 z1y2"), self.arcade)
+        pairs = [(e.position_key, e.count) for e in parsed.entries]
+        self.assertIn(("z", 5), pairs)
+        self.assertIn(("y", 2), pairs)
+
     def test_plus_increment(self):
         parsed = parse_report("左+2", self.arcade)
         self.assertEqual((parsed.entries[0].position_key, parsed.entries[0].count,

@@ -184,6 +184,8 @@ class WebAPIMixin:
         if err:
             return jsonify({"ok": False, "message": err})
         self.store.upsert_arcade(arcade)
+        # 群绑定可能变化，顺手清理已解绑群的会话映射
+        self.store.prune_group_sessions()
         self.store.add_log("info", "", f"保存机厅 {arcade.name}")
         return jsonify({"ok": True, "data": arcade.to_dict()})
 
@@ -194,6 +196,7 @@ class WebAPIMixin:
         if arcade is None:
             return jsonify({"ok": False, "message": "机厅不存在"}), 404
         self.store.delete_arcade(arcade_id)
+        self.store.prune_group_sessions()
         self.store.add_log("info", "", f"删除机厅 {arcade.name}")
         return jsonify({"ok": True})
 
