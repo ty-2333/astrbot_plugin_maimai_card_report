@@ -5,7 +5,11 @@ from __future__ import annotations
 import unittest
 
 from .helpers import make_arcade, make_machine
-from astrbot_plugin_maimai_card_report.utils import normalize_text, cn_num_to_int
+from astrbot_plugin_maimai_card_report.utils import (
+    cn_num_to_int,
+    normalize_text,
+    strip_mention_prefix,
+)
 from astrbot_plugin_maimai_card_report.backend.parser import (
     default_machine,
     extract_signed_count,
@@ -230,6 +234,92 @@ class TestLooksLikeAttempt(unittest.TestCase):
     def test_date_with_dash_not_attempt(self):
         arcade = make_arcade()
         self.assertFalse(looks_like_report_attempt("2026-11", arcade))
+
+
+class TestReportBoundaries(unittest.TestCase):
+    """报卡边界：裸数字只有在显式机台前缀位于句首时才成立。"""
+
+    def setUp(self):
+        self.arcade = make_arcade(
+            name="真快活",
+            aliases=["wx"],
+            machines={
+                "m_maimai": make_machine(
+                    machine_id="m_maimai", name="舞萌", aliases=["wm"],
+                    is_default=True, position_aliases={"z": "左", "y": "右"},
+                ),
+                "m_taiko": make_machine(
+                    machine_id="m_taiko", name="太鼓达人", aliases=["太鼓", "tg"],
+                    is_default=False, position_aliases={"z": "总"},
+                ),
+            },
+        )
+
+    def test_machine_prefix_bare_number_accepted(self):
+        cases = [
+            ("tg2", "太鼓达人", "z", 2),
+            ("tg 2", "太鼓达人", "z", 2),
+            ("太鼓2", "太鼓达人", "z", 2),
+            ("太鼓 2", "太鼓达人", "z", 2),
+            ("太鼓达人2", "太鼓达人", "z", 2),
+            ("wm3", "舞萌", "z", 3),
+            ("舞萌3", "舞萌", "z", 3),
+        ]
+        for text, machine, pos, count in cases:
+            with self.subTest(text=text):
+                parsed = parse_report(text, self.arcade)
+                self.assertIsNotNone(parsed, text)
+                self.assertEqual(parsed.machine.name, machine)
+                self.assertEqual(
+                    (parsed.entries[0].position_key, parsed.entries[0].count),
+                    (pos, count),
+                )
+
+    def test_machine_prefix_bare_number_with_sign_still_works(self):
+        parsed = parse_report("tg+1", self.arcade)
+        self.assertTrue(parsed.entries[0].increment)
+        self.assertEqual(parsed.entries[0].count, 1)
+
+    def test_plain_numbers_rejected(self):
+        for text in ("6", "666", "2026", "114514", "5", "0"):
+            self.assertIsNone(parse_report(text, self.arcade), text)
+
+    def test_machine_alias_not_at_start_rejects_bare_number(self):
+        # tg 只是出现在句中，不构成「机台前缀 + 人数」
+        for text in ("wtg2", "打tg2"):
+            self.assertIsNone(parse_report(text, self.arcade), text)
+
+    def test_machine_prefix_with_other_text_rejected(self):
+        # 机台后面不是纯数字时不放行，避免把「太鼓1号机」当成报卡
+        self.assertIsNone(parse_report("太鼓1号机", self.arcade))
+
+
+class TestMentionPrefix(unittest.TestCase):
+    def test_strip_with_qq_id(self):
+        self.assertEqual(strip_mention_prefix("@bot(123456) 5k"), "5k")
+
+    def test_strip_plain(self):
+        self.assertEqual(strip_mention_prefix("@bot 5k"), "5k")
+
+    def test_strip_bidi_name(self):
+        self.assertEqual(
+            strip_mention_prefix("@\u2067~\u2067(806845531) 你怎么知道"),
+            "你怎么知道",
+        )
+
+    def test_strip_name_with_parens(self):
+        self.assertEqual(
+            strip_mention_prefix("@腱鞘炎我恨你1辈子(接跑图)(3373773885) 教我呗"),
+            "教我呗",
+        )
+
+    def test_keep_text_without_space(self):
+        # 没有空格分隔时不剥离，避免把整段内容吃掉
+        self.assertEqual(strip_mention_prefix("@botz1y2"), "@botz1y2")
+
+    def test_plain_text_untouched(self):
+        self.assertEqual(strip_mention_prefix("左5"), "左5")
+        self.assertEqual(strip_mention_prefix(""), "")
 
 
 if __name__ == "__main__":

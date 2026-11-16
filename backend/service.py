@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -15,7 +16,7 @@ from ..config import (
     PLUGIN_NAME,
 )
 from ..log import logger
-from ..utils import format_time, normalize_text, now_ts
+from ..utils import format_time, normalize_text, now_ts, strip_mention_prefix
 from .models import AbnormalUser, Arcade, CardRecord, Machine
 from .parser import (
     default_machine,
@@ -135,13 +136,24 @@ class ReportService:
     # ---------- 帮助 ----------
 
     def is_help_request(self, text: str) -> bool:
-        """判断归一化后的文本是否为 help 请求。"""
+        """判断归一化后的文本是否为 help 请求。
+
+        整句命中 ``HELP_EXACT`` 直接返回；包含词里英文按「独立单词」匹配，
+        所以 ``help``、``help me`` 会触发，``helped`` / ``helper`` / ``helpful``
+        不会；中文没有词边界，仍按子串匹配。
+        """
         t = text.strip()
         if not t:
             return False
         if t in HELP_EXACT:
             return True
-        return any(k in t for k in HELP_CONTAINS)
+        for keyword in HELP_CONTAINS:
+            if keyword.isascii():
+                if re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", t):
+                    return True
+            elif keyword in t:
+                return True
+        return False
 
     @staticmethod
     def help_hint() -> str:
@@ -161,10 +173,12 @@ class ReportService:
             "扣减报卡（当前人数上减，最低到 0）：",
             "  z-1 / 左-2   指定方位扣减",
             "  -1k / -2卡   默认方位扣减",
-            "指定机台：机台名 + 报卡，例如「中二z1y2」",
+            "指定机台：机台名/别名 + 报卡，例如「中二z1y2」「tg2」",
             "指定机厅：机厅别名 + 报卡，例如「兆阳5k」",
             "查询排卡：zyjk / 兆阳几卡 / zy?k",
-            "注意：单独发送数字（如 6、666）不会报卡。",
+            "注意：单独发送数字（如 6、666）不会报卡；",
+            "      但机台前缀后可以跟纯数字，如 tg2 = 太鼓 2 人。",
+            "      @机器人 再报卡也可以，开头的 @ 会被忽略。",
         ]
         if arcade is not None:
             lines.append("")
@@ -197,6 +211,7 @@ class ReportService:
             logger.info(f"[{PLUGIN_NAME}] 更新群会话映射 group={group_id} origin={origin}")
 
         text = normalize_text(event.get_message_str())
+        text = strip_mention_prefix(text)
         if not text:
             self.log_local("debug", group_id, f"归一化后文本为空，跳过 sender={sender_id}")
             return EventOutcome(None, False)

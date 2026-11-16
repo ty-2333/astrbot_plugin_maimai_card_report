@@ -15,6 +15,10 @@ _CN_DIGITS = {
 _CN_UNITS = {"十": 10, "百": 100, "千": 1000}
 _CN_NUM_RE = re.compile(r"[零一二两三四五六七八九十百千]+")
 
+# @ 提及前缀：QQ 客户端会把「@昵称」渲染成 @昵称(QQ号)，昵称里可能还有括号
+_MENTION_WITH_ID_RE = re.compile(r"^@[^\s@]+\(\d{4,12}\)\s*")
+_MENTION_PLAIN_RE = re.compile(r"^@[^\s@]+\s+")
+
 
 def to_halfwidth(text: str) -> str:
     """全角字符转半角，全角空格转普通空格。"""
@@ -69,6 +73,30 @@ def normalize_text(text: str | None) -> str:
     text = to_halfwidth(text)
     text = _CN_NUM_RE.sub(_cn_to_arabic, text)
     return text.lower()
+
+
+def strip_mention_prefix(text: str | None) -> str:
+    """去掉文本开头的一个或多个 @ 提及，返回剩余内容。
+
+    只处理「句首」的提及，避免误伤正文中间的内容：
+    - ``@机器人(123456) 5k`` → ``5k``
+    - ``@机器人 左5`` → ``左5``
+    - ``@小明 @机器人 5k`` → ``5k``
+
+    没有 QQ 号后缀时要求 @昵称后必须跟空白，避免把 ``@某人z1y2``
+    这种没有空格的整段文字误当成提及而删掉。
+    """
+    if not text:
+        return ""
+    result = text.strip()
+    for _ in range(3):  # 最多连续剥离 3 个提及
+        stripped = _MENTION_WITH_ID_RE.sub("", result, count=1)
+        if stripped == result:
+            stripped = _MENTION_PLAIN_RE.sub("", result, count=1)
+        if stripped == result:
+            break
+        result = stripped.lstrip()
+    return result.strip()
 
 
 def now_ts() -> float:

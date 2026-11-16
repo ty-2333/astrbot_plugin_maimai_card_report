@@ -317,6 +317,43 @@ class TestService(unittest.TestCase):
         arcade = self.store.get_arcade("a_1")
         self.assertFalse(asyncio.run(self.service._send_notice(arcade, "open")))
 
+    # ---------- @ 提及前缀 ----------
+
+    def test_at_prefix_bare_unit(self):
+        out = asyncio.run(self.service.handle_event(FakeEvent("@bot 5k")))
+        self.assertIn("左:5", out.reply)
+
+    def test_at_prefix_with_qq_id(self):
+        out = asyncio.run(self.service.handle_event(FakeEvent("@机器人(123456) 5卡")))
+        self.assertIn("左:5", out.reply)
+
+    def test_at_prefix_position(self):
+        out = asyncio.run(self.service.handle_event(FakeEvent("@bot 左3")))
+        self.assertIn("左:3", out.reply)
+
+    def test_at_prefix_machine_bare_number(self):
+        out = asyncio.run(self.service.handle_event(FakeEvent("@bot 舞萌3")))
+        self.assertIn("左:3", out.reply)
+
+    def test_at_prefix_does_not_break_plain_chat(self):
+        out = asyncio.run(self.service.handle_event(FakeEvent("@小明(123456) 你怎么知道")))
+        self.assertIsNone(out.reply)
+
+    # ---------- help 匹配 ----------
+
+    def test_help_independent_word(self):
+        for text in ("help", "help me", "could you help?", "帮助", "求帮助"):
+            with self.subTest(text=text):
+                out = asyncio.run(self.service.handle_event(FakeEvent(text)))
+                self.assertIsNotNone(out.reply)
+                self.assertIn("使用说明", out.reply)
+
+    def test_help_not_triggered_inside_word(self):
+        for text in ("helped", "helper", "helpful"):
+            with self.subTest(text=text):
+                out = asyncio.run(self.service.handle_event(FakeEvent(text)))
+                self.assertIsNone(out.reply)
+
 
 if __name__ == "__main__":
     unittest.main()

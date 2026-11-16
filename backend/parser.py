@@ -189,6 +189,8 @@ def parse_position_entries(text: str, machine: Machine) -> list[ParsedEntry]:
 _COUNT_ONLY_RE = re.compile(
     r"^(?:(?P<sign>[+-])(?P<signed>\d+)|(?P<plain>\d+))(?P<unit>[k卡人])?$"
 )
+# 纯数字（仅允许跟在显式机台别名后面，如 tg2 / 太鼓2）
+_BARE_COUNT_RE = re.compile(r"^\d+$")
 
 
 def extract_signed_count(text: str) -> tuple[str, int] | None:
@@ -217,11 +219,23 @@ def first_position_key(machine: Machine) -> str | None:
     return keys[0] if keys else None
 
 
+def _starts_with_machine(text: str, machine: Machine) -> bool:
+    """机台别名是否出现在文本开头（允许前导空白）。"""
+    stripped = text.strip()
+    return any(stripped.startswith(token) for token in machine_search_tokens(machine))
+
+
 def parse_report(rest: str, arcade: Arcade) -> ParsedReport | None:
-    """解析报卡文本。rest 为去除机厅别名后的归一化文本。"""
+    """解析报卡文本。rest 为去除机厅别名后的归一化文本。
+
+    裸数字只有在「显式机台前缀」出现在句首时才被当作人数，例如
+    ``tg2``、``太鼓2``、``wm3``；群聊里单独一个 ``6`` 仍然不是报卡。
+    """
     matched = match_machine(rest, arcade)
+    explicit_machine = False
     if matched:
         machine, remainder = matched
+        explicit_machine = _starts_with_machine(rest, machine)
     else:
         machine = default_machine(arcade)
         remainder = rest
@@ -234,6 +248,11 @@ def parse_report(rest: str, arcade: Arcade) -> ParsedReport | None:
 
     # 仅数量：如 "5k"、"5卡"、"+1"、"-2k"（裸数字不算，见 extract_signed_count）
     signed = extract_signed_count(remainder)
+    if signed is None and explicit_machine:
+        # 机台别名明确写在句首时，允许跟一个纯数字：tg2 / 太鼓2 / wm3
+        bare = remainder.strip()
+        if _BARE_COUNT_RE.match(bare):
+            signed = ("set", int(bare))
     if signed is None:
         return None
     mode, count = signed

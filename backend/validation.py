@@ -34,9 +34,6 @@ def validate_arcade(
                 return f"别名「{alias}」已被机厅「{other.name}」用作机厅名"
             if alias in other_aliases:
                 return f"别名「{alias}」已被机厅「{other.name}」使用"
-        # 自身机厅名被别的机厅别名占用
-        if other_name and other_name in my_aliases:
-            return f"别名「{other.name}」与机厅「{other.name}」冲突"
 
     # 群号格式
     for gid in arcade.group_ids:

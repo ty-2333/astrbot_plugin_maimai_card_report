@@ -18,7 +18,7 @@ from ..backend.parser import (
 from ..backend.validation import validate_arcade
 from ..config import PLUGIN_NAME
 from ..log import logger
-from ..utils import new_id, normalize_text, now_ts
+from ..utils import new_id, normalize_text, now_ts, strip_mention_prefix
 
 WEBUI_LOG_PREFIX = f"[{PLUGIN_NAME}][WebUI]"
 
@@ -302,7 +302,7 @@ class WebAPIMixin:
         if not text:
             return jsonify({"ok": False, "message": "请输入消息文本"}), 400
 
-        normalized = normalize_text(text)
+        normalized = strip_mention_prefix(normalize_text(text))
         result = {
             "normalized": normalized,
             "matched_arcade": None,
